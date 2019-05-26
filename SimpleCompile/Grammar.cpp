@@ -148,19 +148,22 @@ void Grammar::OPG_analysis(const Lexer &l) {
 	vector<string> svec;
 	svec.push_back("#");
 
-	string sym;
-	int k = 0;	// 当前归约栈中的最后一个元素位置
-	int j;		// 当前归约栈中的最后一个非终结符的位置
+	string sym;		// 当前读入字符
+	size_t k = 0;	// 当前归约栈中的最后一个元素位置
+	size_t j;		// 当前归约栈中的最后一个非终结符的位置
 	bool correct = true;
+	stack<int> si;
 	vector<stack<string>> slvec{ {} };	// 该栈中保存查询生成式的归约对象
 	vector<stack<string>> srvec{ {} };	// 该栈中保存查询生成式的右部，作为下一个符号的归约对象
 	int curStack = 0;	// 每进入一个左括号，则切换到新的栈，该值指向当前符号串所对应的栈
 	for (int i = 0; i < l.seq_vec.size();) {
 		if (l.seq_vec[i].first == ";") {
 			if (correct)
-				cout << "正确" << endl;
+				cout << "正确，计算结果为" << si.top() << endl;
 			svec.clear();
 			svec.push_back("#");
+			while (!si.empty())
+				si.pop();
 			slvec.clear();
 			slvec.push_back({});
 			srvec.clear();
@@ -172,8 +175,10 @@ void Grammar::OPG_analysis(const Lexer &l) {
 			continue;
 		}
 		// 将字母与数字替换为i，其余符号不替换
-		if (isalnum(l.seq_vec[i].first[0]))
+		if (isalnum(l.seq_vec[i].first[0])) {
 			sym = "i";
+			si.push(stoi(l.seq_vec[i].second));
+		}
 		else
 			sym = l.seq_vec[i].first;
 
@@ -276,8 +281,21 @@ void Grammar::OPG_analysis(const Lexer &l) {
 
 			// 先尝试直接归约res到left
 			if (transform(res, left)) {
-				// 成功则压栈
+				// 成功则压栈，并计算出结果
 				svec.push_back(left);
+				if (res.find('+') != string::npos) {
+					auto x = si.top();
+					si.pop();
+					auto y = si.top();
+					si.pop();
+					si.push(x + y);
+				} else if (res.find('*') != string::npos) {
+					auto x = si.top();
+					si.pop();
+					auto y = si.top();
+					si.pop();
+					si.push(x * y);
+				}
 				// 若转换串为(E)，则删除当前归约辅助栈，回到上一个归约辅助栈
 				if (res == "(E)") {
 					slvec.erase(slvec.begin() + curStack);
@@ -299,6 +317,19 @@ void Grammar::OPG_analysis(const Lexer &l) {
 						res.append(right);
 						if (transform(res, left)) {
 							svec.push_back(left);
+							if (res.find('+') != string::npos) {
+								auto x = si.top();
+								si.pop();
+								auto y = si.top();
+								si.pop();
+								si.push(x + y);
+							} else if (res.find('*') != string::npos) {
+								auto x = si.top();
+								si.pop();
+								auto y = si.top();
+								si.pop();
+								si.push(x * y);
+							}
 							if (res[0] == '(') {
 								slvec.erase(slvec.begin() + curStack);
 								srvec.erase(srvec.begin() + curStack);

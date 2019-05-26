@@ -117,7 +117,6 @@ void Grammar::generate_OPG_table() {
 
 bool Grammar::transform_aux(const string &s, const string &N){
 	bool res = false;
-
 	if (Vn->find(N) != Vn->end()) {
 		// 从N的生成式向下查找
 		for (auto i : (*P)[N]) {
@@ -129,7 +128,6 @@ bool Grammar::transform_aux(const string &s, const string &N){
 				return res;
 		}
 	}
-
 	return false;
 }
 
@@ -151,12 +149,12 @@ void Grammar::OPG_analysis(const Lexer &l) {
 	svec.push_back("#");
 
 	string sym;
-	int k = 0;
-	int j;
+	int k = 0;	// 当前归约栈中的最后一个元素位置
+	int j;		// 当前归约栈中的最后一个非终结符的位置
 	bool correct = true;
-	vector<stack<string>> slvec{ {} };
-	vector<stack<string>> srvec{ {} };
-	int curStack = 0;
+	vector<stack<string>> slvec{ {} };	// 该栈中保存查询生成式的归约对象
+	vector<stack<string>> srvec{ {} };	// 该栈中保存查询生成式的右部，作为下一个符号的归约对象
+	int curStack = 0;	// 每进入一个左括号，则切换到新的栈，该值指向当前符号串所对应的栈
 	for (int i = 0; i < l.seq_vec.size();) {
 		if (l.seq_vec[i].first == ";") {
 			if (correct)
@@ -173,32 +171,44 @@ void Grammar::OPG_analysis(const Lexer &l) {
 			++i;
 			continue;
 		}
+		// 将字母与数字替换为i，其余符号不替换
 		if (isalnum(l.seq_vec[i].first[0]))
 			sym = "i";
 		else
 			sym = l.seq_vec[i].first;
+
+		// 将j设置为归约栈中最后一个非终结符的位置
 		if (!isupper(svec[k][0]))
 			j = k;
 		else
 			j = k - 1;
 
+		// 进入一个括号内就创建新的栈作为当前栈
 		if (sym == "(") {
 			++curStack;
 			srvec.push_back({});
 			slvec.push_back({});
 		}
 
+		// 当归约栈最后一个非终结符算符优先于即将读入的字符，则进行归约
 		while ((*OPG_table)[{svec[j], sym}] == ">") {
 			string Q;
-			string res;
-			int count = 0;
+			int count = 0;	// 计数算符比较的次数
+			
+			// 这里不得已而为之，因为当要归约(E)时，通过下面循环
+			// 找到的串错误，因为( = )，而循环条件为 <，无法维持
+			// 循环，而算法保证在读入字符sym为")"时，就会将括号
+			// 内的元素归约到E，所以这里直接归约(E)
 			if (svec.back() == ")")
 				j -= 3;
 			else {
 				do {
 					Q = svec[j];
 					if (!isupper(svec[j - 1][0])) {
-						if (svec[j - 1] == "#" || svec[j-1] == "(") {
+						// 这里不得已而为之，主要问题是引入了"#"和"("，
+						// 其造成的影响是在某些情况下，会造成转换串出错
+						// 这里仅仅是为了防止这些情况造成的错误
+						if (svec[j - 1] == "#" || svec[j - 1] == "(") {
 							if (count <= 1)
 								j -= 1;
 							else
@@ -208,6 +218,7 @@ void Grammar::OPG_analysis(const Lexer &l) {
 						}
 						++count;
 					} else if (j - 2 >= 0) {
+						// 同上
 						if (svec[j - 2] == "#" || svec[j - 2] == "(") {
 							if (count <= 1)
 								j -= 2;
@@ -215,30 +226,38 @@ void Grammar::OPG_analysis(const Lexer &l) {
 								break;
 						} else {
 							j -= 2;
-						}	
+						}
 						++count;
 					}
+					// 需要注意的是，这里比所给算法多出了一个判断条件，也是为了防止转换串出错
 				} while ((*OPG_table)[{svec[j], Q}] == "<" && (*OPG_table)[{svec[j], sym}] == ">");
 			}
+
+			string res;	// 转换串
 			for (auto it = svec.begin() + j + 1; it < svec.begin() + k + 1; ++it)
 				res += *it;
+			// 从归约栈中删除转换串
 			svec.erase(svec.begin() + j + 1, svec.begin() + k + 1);
 			k = j + 1;
 
+			// 从文法中找出含有sym的生成式
 			string left, right, nextRight;
 			if (sym != "#") {
 				for (auto i : *P) {
 					for (auto x : i.second) {
 						auto y = x.find(sym);
 						if (y != string::npos) {
-							if (!slvec[curStack].empty())
-								slvec[curStack].pop();
 							slvec[curStack].push(i.first);
+
+							// 以下判断仅仅针对当前文法
 							if (x[0] == '(')
 								left = "E";
 							else
 								left = x.substr(0, y);
+
 							if (y < x.size() - 1)
+								// nextRight为当前查找的生成式的右部（如果有）
+								// 该右部需要在归约转换串完成后入栈
 								nextRight = x.substr(y + 1, x.size());
 							break;
 						}
@@ -247,6 +266,7 @@ void Grammar::OPG_analysis(const Lexer &l) {
 						break;
 				}
 			} else if (!slvec[curStack].empty()) {
+				// 如果文法中没有找到，而sl栈非空，则使用sl当前栈的顶部元素
 				left = slvec[curStack].top();
 				slvec[curStack].pop();
 			} else {
@@ -254,25 +274,27 @@ void Grammar::OPG_analysis(const Lexer &l) {
 				nextRight = "";
 			}
 
-			if (left.empty() && !slvec[curStack].empty()) {
-				left = slvec[curStack].top();
-				slvec[curStack].pop();
-			}
-
+			// 先尝试直接归约res到left
 			if (transform(res, left)) {
+				// 成功则压栈
 				svec.push_back(left);
-				if (res[0] == '(') {
+				// 若转换串为(E)，则删除当前归约辅助栈，回到上一个归约辅助栈
+				if (res == "(E)") {
 					slvec.erase(slvec.begin() + curStack);
 					srvec.erase(srvec.begin() + curStack);
 					--curStack;
 				}
+				// 将当前生成式的右部入栈
 				if(!nextRight.empty())
 					srvec[curStack].push(nextRight);
 			} else {
+				// 失败，则去查找右部栈，找到上一个生成式的右部
 				if (!srvec[curStack].empty()) {
 					right = srvec[curStack].top();
 					srvec[curStack].pop();
+					// 尝试将转换串的最后一个符号转换成上一个生成式的右部
 					if (transform({ *(--res.end()) }, right)) {
+						// 成功则替换该符号，并再次尝试转换为left
 						res.erase(--res.end()); 
 						res.append(right);
 						if (transform(res, left)) {
@@ -286,15 +308,15 @@ void Grammar::OPG_analysis(const Lexer &l) {
 								srvec[curStack].push(nextRight);
 						}
 						else {
-							cout << "错误：提升之后依旧失败" << endl;
+							cout << "错误：转换后之后依旧失败" << endl;
 							correct = false;
 						}
 					} else {
-						cout << "错误：提升失败" << endl;
+						cout << "错误：转换失败" << endl;
 						correct = false;
 					}
 				} else {
-					cout << "错误：无法提升" << endl;
+					cout << "错误：无法转换" << endl;
 					correct = false;
 				}
 			}

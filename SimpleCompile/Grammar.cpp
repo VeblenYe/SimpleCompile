@@ -153,7 +153,6 @@ void Grammar::OPG_analysis(const Lexer &l) {
 	size_t j;		// 当前归约栈中的最后一个非终结符的位置
 	bool correct = true;
 	stack<int> si;
-	vector<stack<string>> slvec{ {} };	// 该栈中保存查询生成式的归约对象
 	vector<stack<string>> srvec{ {} };	// 该栈中保存查询生成式的右部，作为下一个符号的归约对象
 	int curStack = 0;	// 每进入一个左括号，则切换到新的栈，该值指向当前符号串所对应的栈
 	for (int i = 0; i < l.seq_vec.size();) {
@@ -164,8 +163,6 @@ void Grammar::OPG_analysis(const Lexer &l) {
 			svec.push_back("#");
 			while (!si.empty())
 				si.pop();
-			slvec.clear();
-			slvec.push_back({});
 			srvec.clear();
 			srvec.push_back({});
 			curStack = 0;
@@ -192,7 +189,6 @@ void Grammar::OPG_analysis(const Lexer &l) {
 		if (sym == "(") {
 			++curStack;
 			srvec.push_back({});
-			slvec.push_back({});
 		}
 
 		// 当归约栈最后一个非终结符算符优先于即将读入的字符，则进行归约
@@ -252,8 +248,6 @@ void Grammar::OPG_analysis(const Lexer &l) {
 					for (auto x : i.second) {
 						auto y = x.find(sym);
 						if (y != string::npos) {
-							slvec[curStack].push(i.first);
-
 							// 以下判断仅仅针对当前文法
 							if (x[0] == '(')
 								left = "E";
@@ -270,10 +264,6 @@ void Grammar::OPG_analysis(const Lexer &l) {
 					if (!left.empty())
 						break;
 				}
-			} else if (!slvec[curStack].empty()) {
-				// 如果文法中没有找到，而sl栈非空，则使用sl当前栈的顶部元素
-				left = slvec[curStack].top();
-				slvec[curStack].pop();
 			} else {
 				left = "E";
 				nextRight = "";
@@ -298,7 +288,6 @@ void Grammar::OPG_analysis(const Lexer &l) {
 				}
 				// 若转换串为(E)，则删除当前归约辅助栈，回到上一个归约辅助栈
 				if (res == "(E)") {
-					slvec.erase(slvec.begin() + curStack);
 					srvec.erase(srvec.begin() + curStack);
 					--curStack;
 				}
@@ -330,8 +319,7 @@ void Grammar::OPG_analysis(const Lexer &l) {
 								si.pop();
 								si.push(x * y);
 							}
-							if (res[0] == '(') {
-								slvec.erase(slvec.begin() + curStack);
+							if (res == "(E)") {
 								srvec.erase(srvec.begin() + curStack);
 								--curStack;
 							}
